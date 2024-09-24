@@ -1,26 +1,24 @@
-import speech_recognition as sr
-import sounddevice as sd
-import numpy as np
 import os
 import webbrowser
 import google.generativeai as genai
 import pyttsx3
 import datetime
+import sounddevice as sd
+import numpy as np
+import vosk
 
 # Configure the Gemini API key
-genai.configure(api_key=os.environ["API_KEY"])
+genai.configure(api_key=os.getenv("API_KEY"))
 
 # Initialize pyttsx3 engine for TTS
 engine = pyttsx3.init()
 
 chatStr = ""
 
-
 def speak(text):
     """ Function to use text-to-speech with pyttsx3 """
     engine.say(text)
     engine.runAndWait()
-
 
 def chat(query):
     global chatStr
@@ -36,7 +34,6 @@ def chat(query):
     chatStr += f"{reply}\n"
     return reply
 
-
 def ai(prompt):
     text = f"Gemini response for Prompt: {prompt} \n *************************\n\n"
 
@@ -50,33 +47,32 @@ def ai(prompt):
     with open(f"Gemini/{''.join(prompt.split('intelligence')[1:]).strip()}.txt", "w") as f:
         f.write(text)
 
-
-def record_audio(duration=5, fs=44100, device=1):
-    """ Function to record audio using sounddevice with explicit device selection """
+def record_audio(duration=5, fs=44100):
+    """ Function to record audio using sounddevice """
     print("Recording...")
-    audio = sd.rec(int(duration * fs), samplerate=fs, channels=1, dtype='float64', device=device)
+    audio = sd.rec(int(duration * fs), samplerate=fs, channels=1, dtype='int16')
     sd.wait()  # Wait until the recording is finished
     return audio
 
-
 def takeCommand():
-    r = sr.Recognizer()
-    mic_index = 1  # Change this to the index of the microphone you want to use
-    with sr.Microphone(device_index=mic_index) as source:
-        print("Listening...")
-        audio = r.listen(source)
-        try:
-            print("Recognizing...")
-            query = r.recognize_google(audio, language='en-in')
-            print(f"User said: {query}")
-            return query
-        except sr.UnknownValueError:
-            print("Google Speech Recognition could not understand the audio")
-            return "Some Error Occurred. Sorry from Jarvis"
-        except sr.RequestError as e:
-            print(f"Could not request results from Google Speech Recognition service; {e}")
-            return "Some Error Occurred. Sorry from Jarvis"
+    # Load Vosk model
+    model = vosk.Model("model")  # Ensure you have the Vosk model downloaded in the 'model' folder
+    recognizer = vosk.KaldiRecognizer(model, 44100)
 
+    with sd.RawInputStream(samplerate=44100, blocksize=8000, dtype='int16', channels=1) as stream:
+        print("Listening...")
+        while True:
+            data = stream.read(4000)
+            if recognizer.AcceptWaveform(data):
+                result = recognizer.Result()
+                query = result['text']
+                print(f"User said: {query}")
+                return query
+
+            # Optionally handle partial results
+            partial_result = recognizer.PartialResult()
+            if partial_result:
+                print(f"Partial result: {partial_result['partial']}")
 
 if __name__ == '__main__':
     print('Welcome to Jarvis A.I')
